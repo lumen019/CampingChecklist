@@ -12,9 +12,9 @@ A Java desktop application for organizing camping trip packing lists and trackin
 - Save and load trips and packing lists.
 
 ## Team
-- Jared — Project overview and presentation
-- Colby — User experience and prototype
-- Lia — UML and class structure
+- Jared Saltou
+- Lia Day
+- Colby Almond
 
 All team members contribute to project design and review.
 
