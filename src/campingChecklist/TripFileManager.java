@@ -17,6 +17,10 @@ import java.util.Objects;
 
 /**
  * Saves and loads trips using a versioned binary file format.
+ *
+ * <p>Each trip record includes its name, location, optional date,
+ * and packing items. Each item includes its name, category,
+ * quantity, and packed status.</p>
  */
 public class TripFileManager {
 
@@ -25,6 +29,12 @@ public class TripFileManager {
 
     private final String fileName;
 
+    /**
+     * Creates a file manager for the specified path.
+     *
+     * @param fileName the storage file path
+     * @throws IllegalArgumentException if fileName is null or blank
+     */
     public TripFileManager(String fileName) {
         if (fileName == null || fileName.trim().isEmpty()) {
             throw new IllegalArgumentException(
@@ -34,6 +44,17 @@ public class TripFileManager {
         this.fileName = fileName;
     }
 
+    /**
+     * Writes trips and their items, replacing existing file contents.
+     *
+     * <p>The parent directory must already exist. This method writes
+     * directly to the destination file; it does not perform an atomic
+     * replacement or preserve the old file if writing fails.</p>
+     *
+     * @param trips the trips to save
+     * @throws NullPointerException if trips is null
+     * @throws UncheckedIOException if writing fails
+     */
     public void saveTrips(ArrayList<Trip> trips) {
         Objects.requireNonNull(trips, "Trips cannot be null.");
 
@@ -57,6 +78,13 @@ public class TripFileManager {
         }
     }
 
+    /**
+     * Loads all trips and their packing items.
+     *
+     * @return the restored trips, or an empty list if the file is missing
+     * @throws UncheckedIOException if reading fails or the file
+     *         contains an unsupported or invalid record
+     */
     public ArrayList<Trip> loadTrips() {
         Path path = Paths.get(fileName);
 
@@ -93,6 +121,9 @@ public class TripFileManager {
         }
     }
 
+    /**
+     * Writes one trip and all of its packing items.
+     */
     private void writeTrip(
             DataOutputStream output,
             Trip trip) throws IOException {
@@ -118,6 +149,9 @@ public class TripFileManager {
         }
     }
 
+    /**
+     * Reads and validates one trip and its packing items.
+     */
     private Trip readTrip(
             DataInputStream input) throws IOException {
 
@@ -168,6 +202,9 @@ public class TripFileManager {
         }
     }
 
+    /**
+     * Reads a nonnegative trip or item count.
+     */
     private int readCount(
             DataInputStream input) throws IOException {
 
