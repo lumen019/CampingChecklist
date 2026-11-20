@@ -5,5 +5,5 @@
  * 
  */
 module CampingChecklist {
-	requires java.desktop;
+    requires java.desktop;
 }
