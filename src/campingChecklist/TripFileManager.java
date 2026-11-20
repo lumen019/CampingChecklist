@@ -129,7 +129,7 @@ public class TripFileManager {
             Trip trip) throws IOException {
 
         output.writeUTF(trip.getName());
-        output.writeUTF(trip.getLocation());
+//        output.writeUTF(trip.getLocation());
 
         LocalDate date = trip.getDate();
         output.writeBoolean(date != null);
@@ -145,7 +145,7 @@ public class TripFileManager {
             output.writeUTF(item.getName());
             output.writeUTF(item.getCategory());
             output.writeInt(item.getQuantity());
-            output.writeBoolean(item.isPacked());
+//            output.writeBoolean(item.isPacked());
         }
     }
 
@@ -173,7 +173,8 @@ public class TripFileManager {
         int itemCount = readCount(input);
 
         try {
-            Trip trip = new Trip(name, location, date);
+//            Trip trip = new Trip(name, location, date);
+            Trip trip = new Trip(name, date);
 
             for (int i = 0; i < itemCount; i++) {
                 String itemName = input.readUTF();

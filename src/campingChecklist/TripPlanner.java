@@ -95,10 +95,11 @@ public class TripPlanner {
 
         requireManagedTrip(trip);
 
-        Trip validated = new Trip(name, location, date);
+//        Trip validated = new Trip(name, location, date);
+        Trip validated = new Trip(name, date);
 
         trip.setName(validated.getName());
-        trip.setLocation(validated.getLocation());
+//        trip.setLocation(validated.getLocation());
         trip.setDate(validated.getDate());
     }
 
@@ -189,9 +190,9 @@ public class TripPlanner {
         PackingItem validated =
                 new PackingItem(name, category, quantity);
 
-        item.setName(validated.getName());
-        item.setCategory(validated.getCategory());
-        item.setQuantity(validated.getQuantity());
+//        item.setName(validated.getName());
+//        item.setCategory(validated.getCategory());
+//        item.setQuantity(validated.getQuantity());
     }
 
     /**
