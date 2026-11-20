@@ -5,9 +5,13 @@ import java.util.ArrayList;
 import java.util.Objects;
 
 /**
- * Manages camping trips and their packing items and coordinates file storage.
+ * Manages trips and packing items for the current demo.
  *
- * <p>Changes remain in memory until saveTrips() is called.</p>
+ * <p>Supports trip name/date editing, packing-item addition and removal,
+ * packed-status updates, and packing-progress calculation.</p>
+ *
+ * <p>Item-detail editing is unfinished. Changes remain in memory until
+ * saveTrips() is called.</p>
  */
 public class TripPlanner {
 
@@ -24,8 +28,10 @@ public class TripPlanner {
     /**
      * Creates an empty planner using the specified storage file.
      *
+     * <p>Saved trips are not loaded automatically.</p>
+     *
      * @param fileName the storage file path
-     * @throws IllegalArgumentException if the file name is null or blank
+     * @throws IllegalArgumentException if fileName is null or blank
      */
     public TripPlanner(String fileName) {
         trips = new ArrayList<>();
@@ -33,10 +39,10 @@ public class TripPlanner {
     }
 
     /**
-     * Returns a copy of the trip list containing the current Trip objects.
+     * Returns a copy of the list containing the current trip objects.
      *
-     * <p>Changing the returned list does not change the planner's list.
-     * The Trip objects themselves remain editable.</p>
+     * <p>Changing the returned list does not change this planner's list.
+     * The trip objects themselves remain editable.</p>
      *
      * @return a copy of the trip list
      */
@@ -65,8 +71,8 @@ public class TripPlanner {
     /**
      * Verifies that a trip belongs to this planner.
      *
-     * <p>This overload does not change trip details. Callers may update
-     * the managed trip through its setters.</p>
+     * <p>This overload does not modify the trip. Callers may change
+     * the managed trip through its available setters.</p>
      *
      * @param trip the trip to verify
      * @throws NullPointerException if trip is null
@@ -77,15 +83,18 @@ public class TripPlanner {
     }
 
     /**
-     * Updates a managed trip after validating all new values.
+     * Updates a managed trip's name and date.
+     *
+     * <p>The location parameter is retained for compatibility with
+     * existing callers but is not validated or stored in this demo.</p>
      *
      * @param trip the managed trip to edit
-     * @param name the new nonblank name
-     * @param location the new nonblank location
-     * @param date the new date, or null for an undated trip
+     * @param name the new nonblank trip name
+     * @param location unused in the demo version
+     * @param date the new trip date
      * @throws NullPointerException if trip is null
      * @throws IllegalArgumentException if the trip is not managed
-     *         or the new name or location is invalid
+     *         or the new values are rejected by the Trip constructor
      */
     public void editTrip(
             Trip trip,
@@ -95,18 +104,16 @@ public class TripPlanner {
 
         requireManagedTrip(trip);
 
-//        Trip validated = new Trip(name, location, date);
         Trip validated = new Trip(name, date);
 
         trip.setName(validated.getName());
-//        trip.setLocation(validated.getLocation());
         trip.setDate(validated.getDate());
     }
 
     /**
      * Removes a trip if it belongs to this planner.
      *
-     * <p>An unknown trip leaves the planner unchanged.</p>
+     * <p>An unknown trip leaves the list unchanged.</p>
      *
      * @param trip the trip to remove
      * @throws NullPointerException if trip is null
@@ -129,8 +136,8 @@ public class TripPlanner {
     /**
      * Adds a packing item to a managed trip.
      *
-     * <p>The same item object cannot be added to the selected trip twice.
-     * Separate item objects with identical details are allowed.</p>
+     * <p>The same item object cannot be added to the selected trip
+     * twice. Separate objects with identical details are allowed.</p>
      *
      * @param trip the managed trip receiving the item
      * @param item the item to add
@@ -165,18 +172,20 @@ public class TripPlanner {
     }
 
     /**
-     * Updates an item's details after validating all new values.
+     * Validates proposed item details without applying them.
      *
-     * <p>The item's packed status is preserved.</p>
+     * <p>This is an unfinished demo operation. Valid input leaves the
+     * existing item unchanged. GUI callers should not present it as
+     * a completed edit operation.</p>
      *
      * @param trip the managed trip containing the item
-     * @param item the item to edit
-     * @param name the new nonblank name
-     * @param category the new nonblank category
-     * @param quantity the new quantity, at least 1
+     * @param item the item whose proposed changes are being checked
+     * @param name the proposed nonblank item name
+     * @param category the proposed nonblank category
+     * @param quantity the proposed quantity, at least 1
      * @throws NullPointerException if trip or item is null
      * @throws IllegalArgumentException if membership validation fails
-     *         or any new item value is invalid
+     *         or the proposed item values are invalid
      */
     public void editPackingItem(
             Trip trip,
@@ -187,16 +196,14 @@ public class TripPlanner {
 
         requireManagedItem(trip, item);
 
-        PackingItem validated =
-                new PackingItem(name, category, quantity);
+        // Validate input while item-detail editing is unfinished.
+        new PackingItem(name, category, quantity);
 
-//        item.setName(validated.getName());
-//        item.setCategory(validated.getCategory());
-//        item.setQuantity(validated.getQuantity());
+        // TODO: Apply validated details when item editing is implemented.
     }
 
     /**
-     * Marks an item as packed or unpacked.
+     * Marks an item as packed or unpacked in memory.
      *
      * @param trip the managed trip containing the item
      * @param item the item to update
@@ -215,10 +222,10 @@ public class TripPlanner {
     }
 
     /**
-     * Returns the percentage of item entries marked packed.
+     * Returns packing progress calculated by the managed trip.
      *
      * @param trip the managed trip to inspect
-     * @return packing progress from 0.0 to 100.0
+     * @return packing progress as a percentage
      * @throws NullPointerException if trip is null
      * @throws IllegalArgumentException if the trip is not managed
      */
@@ -228,7 +235,9 @@ public class TripPlanner {
     }
 
     /**
-     * Saves all current trips and their items.
+     * Saves current trips through the configured file manager.
+     *
+     * <p>The fields preserved depend on the current file-manager format.</p>
      *
      * @throws java.io.UncheckedIOException if saving fails
      */
@@ -237,10 +246,10 @@ public class TripPlanner {
     }
 
     /**
-     * Replaces current trips with the saved trips.
+     * Replaces current trips after loading succeeds.
      *
      * <p>A missing file produces an empty list. If loading throws an
-     * exception, the current trips remain unchanged.</p>
+     * exception, the existing trips remain unchanged.</p>
      *
      * @throws java.io.UncheckedIOException if loading fails
      */

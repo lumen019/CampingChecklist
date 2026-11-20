@@ -16,21 +16,23 @@ import java.util.ArrayList;
 import java.util.Objects;
 
 /**
- * Saves and loads trips using a versioned binary file format.
+ * Saves and loads trips using a reduced demo binary format.
  *
- * <p>Each trip record includes its name, location, optional date,
- * and packing items. Each item includes its name, category,
- * quantity, and packed status.</p>
+ * <p>Stores trip names, optional dates, and packing-item names,
+ * categories, and quantities.</p>
+ *
+ * <p>Separate trip locations and packed status are not stored.
+ * Loaded items are marked unpacked.</p>
  */
 public class TripFileManager {
 
     private static final String FILE_HEADER =
-            "CAMPING_CHECKLIST_V1";
+            "CAMPING_CHECKLIST_DEMO_V1";
 
     private final String fileName;
 
     /**
-     * Creates a file manager for the specified path.
+     * Creates a file manager for the specified storage path.
      *
      * @param fileName the storage file path
      * @throws IllegalArgumentException if fileName is null or blank
@@ -45,11 +47,11 @@ public class TripFileManager {
     }
 
     /**
-     * Writes trips and their items, replacing existing file contents.
+     * Saves trips and their supported item details.
      *
-     * <p>The parent directory must already exist. This method writes
-     * directly to the destination file; it does not perform an atomic
-     * replacement or preserve the old file if writing fails.</p>
+     * <p>Saving replaces existing file contents directly. The parent
+     * directory must already exist. This method does not provide
+     * atomic replacement or backup recovery.</p>
      *
      * @param trips the trips to save
      * @throws NullPointerException if trips is null
@@ -79,11 +81,13 @@ public class TripFileManager {
     }
 
     /**
-     * Loads all trips and their packing items.
+     * Loads trips saved using the reduced demo format.
      *
-     * @return the restored trips, or an empty list if the file is missing
-     * @throws UncheckedIOException if reading fails or the file
-     *         contains an unsupported or invalid record
+     * <p>Files using the original non-demo format are rejected.
+     * Loaded packing items are unpacked.</p>
+     *
+     * @return restored trips, or an empty list if the file is missing
+     * @throws UncheckedIOException if reading fails or data is invalid
      */
     public ArrayList<Trip> loadTrips() {
         Path path = Paths.get(fileName);
@@ -94,7 +98,7 @@ public class TripFileManager {
 
             if (!FILE_HEADER.equals(input.readUTF())) {
                 throw new IOException(
-                        "Unrecognized camping checklist file.");
+                        "Unrecognized camping checklist demo file.");
             }
 
             int tripCount = readCount(input);
@@ -122,14 +126,13 @@ public class TripFileManager {
     }
 
     /**
-     * Writes one trip and all of its packing items.
+     * Writes one trip and its items in the demo field order.
      */
     private void writeTrip(
             DataOutputStream output,
             Trip trip) throws IOException {
 
         output.writeUTF(trip.getName());
-//        output.writeUTF(trip.getLocation());
 
         LocalDate date = trip.getDate();
         output.writeBoolean(date != null);
@@ -145,19 +148,16 @@ public class TripFileManager {
             output.writeUTF(item.getName());
             output.writeUTF(item.getCategory());
             output.writeInt(item.getQuantity());
-//            output.writeBoolean(item.isPacked());
         }
     }
 
     /**
-     * Reads and validates one trip and its packing items.
+     * Reads one trip using the same field order as writeTrip().
      */
     private Trip readTrip(
             DataInputStream input) throws IOException {
 
         String name = input.readUTF();
-        String location = input.readUTF();
-
         LocalDate date = null;
 
         if (input.readBoolean()) {
@@ -173,24 +173,22 @@ public class TripFileManager {
         int itemCount = readCount(input);
 
         try {
-//            Trip trip = new Trip(name, location, date);
             Trip trip = new Trip(name, date);
 
             for (int i = 0; i < itemCount; i++) {
                 String itemName = input.readUTF();
                 String category = input.readUTF();
                 int quantity = input.readInt();
-                boolean packed = input.readBoolean();
 
                 if (quantity < 1) {
                     throw new IOException(
                             "Item quantity must be positive.");
                 }
 
-                PackingItem item = new PackingItem(
-                        itemName, category, quantity);
+                PackingItem item =
+                        new PackingItem(itemName, category, quantity);
 
-                item.setPacked(packed);
+                item.setPacked(false);
                 trip.addPackingItem(item);
             }
 
