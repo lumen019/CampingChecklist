@@ -9,39 +9,65 @@ import java.time.format.DateTimeFormatter;
 import javax.swing.BorderFactory;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
+import javax.swing.JCheckBox;
 import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JScrollPane;
 import javax.swing.JSplitPane;
+import javax.swing.JTable;
 import javax.swing.JTextField;
 import javax.swing.ListSelectionModel;
+import javax.swing.table.DefaultTableModel;
+import java.awt.event.ActionListener;
+import java.awt.event.ActionEvent;
 
 /**
  * Provides a GUI for managing trips and their packing items.
  *
- * <p>Users can add/remove trips, as well as add/remove packing items belonging
+ * <p>Users can add/remove/edit trips, as well as add/remove/edit packing items belonging
  * to the selected trip..
  * Trip and packing items information is stored temporarily and is not saved after the program closes.</p>
  */
 public class TripPlannerGUI extends JPanel {
 
-    /** Stores temporary trip entries displayed by the GUI. */
+	private static final long serialVersionUID = 1L;
+
+	/** Stores temporary trip entries displayed by the GUI. */
     private final DefaultListModel<Trip> tripModel =
             new DefaultListModel<>();
-
-    /** Placeholder model for future packing-item entries. */
-    private final DefaultListModel<PackingItem> itemModel =
-            new DefaultListModel<>();
-
+ 
     /** Displays temporary trips and tracks the selected entry. */
     private final JList<Trip> tripList =
             new JList<>(tripModel);
 
-    /** Placeholder list for the selected trip's packing items. */
-    private final JList<PackingItem> itemList =
-            new JList<>(itemModel);
+    /** Stores temporary packing item data displayed by the GUI
+     * Packed column is editable, while rest is read only.
+     * Column 0 contain Boolean data type, while column 3 
+     * contains Integer, every other column is data type String.
+     */
+    private DefaultTableModel itemModel =
+    		new DefaultTableModel(new Object[]{"Packed", "Item", "Category", "Qty"}, 0) {
+    	
+    	@Override
+        public boolean isCellEditable(int row, int column) {
+            return column == 0; // Only the first column (index 0) is editable
+        }
+    	
+    	@Override
+    	public Class<?> getColumnClass(int column){
+    		if (column == 0) {
+                return Boolean.class;
+            } else if (column ==3) {
+            	return Integer.class;
+            }
+            return String.class;
+    	}
+    };
+
+    /** Displays packing item data stored in itemModel. */
+    private JTable itemTable = new JTable(itemModel);
 
     /**
      * Creates the GUI layout and connects the trip and packing list controls.
@@ -59,9 +85,6 @@ public class TripPlannerGUI extends JPanel {
         		 updateItemList();
         	}
         }));
-
-        itemList.setSelectionMode(
-                ListSelectionModel.SINGLE_SELECTION);
 
         JSplitPane splitPane = new JSplitPane(
                 JSplitPane.HORIZONTAL_SPLIT,
@@ -85,24 +108,44 @@ public class TripPlannerGUI extends JPanel {
     private JPanel createTripPanel() {
         JPanel panel = new JPanel(new BorderLayout(5, 5));
 
-        panel.add(new JLabel("Trips"), BorderLayout.NORTH);
+        JPanel header = new JPanel(new BorderLayout());
+
+        JPanel headerButtons = new JPanel(new BorderLayout());
+       
+        panel.add(header, BorderLayout.NORTH);
         panel.add(
                 new JScrollPane(tripList),
                 BorderLayout.CENTER);
+        
+        header.add(new JLabel("Trip"), BorderLayout.WEST);
+        header.add(headerButtons, BorderLayout.EAST);
+        
+        JButton saveButton = new JButton("Save");
+//        saveButton.addActionListener(event -> saveTrip()); //TODO
+        
+        JButton loadButton = new JButton("Load");
+//        loadButton.addActionListener(event -> loadTrip()); //TODO
+        
+        headerButtons.add(saveButton, BorderLayout.WEST);
+        headerButtons.add(loadButton, BorderLayout.EAST);
 
-        JPanel buttons =
-                new JPanel(new GridLayout(1, 2, 5, 5));
+        JPanel bottomButtons =
+                new JPanel(new GridLayout(1, 5, 5, 5));
 
         JButton addTripButton = new JButton("Add Trip");
         addTripButton.addActionListener(event -> addTrip());
 
         JButton removeTripButton = new JButton("Remove Trip");
         removeTripButton.addActionListener(event -> removeTrip());
-
-        buttons.add(addTripButton);
-        buttons.add(removeTripButton);
-
-        panel.add(buttons, BorderLayout.SOUTH);
+        
+        JButton editTripButton = new JButton("Edit Trip"); 
+        editTripButton.addActionListener(event -> editTrip());
+        
+        bottomButtons.add(addTripButton);
+        bottomButtons.add(removeTripButton);
+        bottomButtons.add(editTripButton);
+        
+        panel.add(bottomButtons, BorderLayout.SOUTH);
 
         return panel;
     }
@@ -114,25 +157,34 @@ public class TripPlannerGUI extends JPanel {
      */
     private JPanel createItemPanel() {
         JPanel panel = new JPanel(new BorderLayout(5, 5));
+        
+        JPanel header = new JPanel(new GridLayout(2, 1));
 
-        panel.add(new JLabel("Trip Items"), BorderLayout.NORTH);
+        header.add(new JLabel("Trip Items"));
+        header.add(new JLabel ("Packing Progress:  0.0%"));
+        
+        panel.add(header, BorderLayout.NORTH);
+        
         panel.add(
-                new JScrollPane(itemList),
+                new JScrollPane(itemTable),
                 BorderLayout.CENTER);
 
         JPanel buttons =
-                new JPanel(new GridLayout(1, 2, 5, 5));
+                new JPanel(new GridLayout(1, 3, 5, 5));
 
         
-        JButton addItemButton = new JButton("Add Trip Item");
+        JButton addItemButton = new JButton("Add Item");
         addItemButton.addActionListener(event -> addItem());
         
-        JButton removeItemButton = new JButton("Remove Trip Item");
+        JButton removeItemButton = new JButton("Remove Item");
         removeItemButton.addActionListener(event -> removeItem());
+        
+        JButton editItemButton = new JButton("Edit Item");
+//        editItemButton.addActionListener(event -> editItem()); //TODO
         
         buttons.add(addItemButton);
         buttons.add(removeItemButton);
-
+        buttons.add(editItemButton);
         panel.add(buttons, BorderLayout.SOUTH);
 
         return panel;
@@ -158,7 +210,7 @@ public class TripPlannerGUI extends JPanel {
         form.add(nameField);
         form.add(new JLabel("Location:"));
         form.add(locationField);
-        form.add(new JLabel("Date (use 4-digit year):"));
+        form.add(new JLabel("Date:"));
         form.add(dateField);
 
         while (true) {
@@ -224,11 +276,25 @@ public class TripPlannerGUI extends JPanel {
         }
 
         tripModel.remove(selectedIndex);
-        itemModel.clear();
+        updateItemList();
 
         if (!tripModel.isEmpty()) {
             tripList.setSelectedIndex(
                     Math.min(selectedIndex, tripModel.size() - 1));
+        }
+    }
+    
+    private void editTrip() {
+    	Trip selectedTrip = tripList.getSelectedValue();
+    	int selectedIndex = tripList.getSelectedIndex();
+
+        if (selectedTrip == null) {
+            JOptionPane.showMessageDialog(
+                    this,
+                    "Select a trip first.",
+                    "No Trip Selected",
+                    JOptionPane.INFORMATION_MESSAGE);
+            return;
         }
     }
     
@@ -303,8 +369,7 @@ public class TripPlannerGUI extends JPanel {
      */
     private void removeItem () {
     	Trip selectedTrip = tripList.getSelectedValue();
-    	PackingItem selectedItem = itemList.getSelectedValue();
-    	int selectedIndex = itemList.getSelectedIndex();
+    	int selectedRow = itemTable.getSelectedRow();
 
         if (selectedTrip == null) {
             JOptionPane.showMessageDialog(
@@ -315,7 +380,7 @@ public class TripPlannerGUI extends JPanel {
             return;
         }
         
-        if (selectedItem == null) {
+        if (selectedRow == -1) {
             JOptionPane.showMessageDialog(
                     this,
                     "Select an item first.",
@@ -335,13 +400,10 @@ public class TripPlannerGUI extends JPanel {
             return;
         }
 
+        PackingItem selectedItem = selectedTrip.getPackingItems().get(selectedRow);
+
         selectedTrip.removePackingItem(selectedItem);
 
-        if (!itemModel.isEmpty()) {
-            itemList.setSelectedIndex(
-                    Math.min(selectedIndex, itemModel.size() - 1));
-        }
-        
         updateItemList();
     }
     
@@ -358,7 +420,8 @@ public class TripPlannerGUI extends JPanel {
     	        "M/d/yyyy",
     	        "M-d-yyyy",
     	        "yyyy-MM-dd",
-    	        "MMMM d, yyyy"
+    	        "MMMM d, yyyy",
+    	        "M/d/yy"
     	    };
     	
     	for (String format : formats) {
@@ -376,14 +439,21 @@ public class TripPlannerGUI extends JPanel {
      * Updates the packing list belonging to the selected trip.
      */
     private void updateItemList() {
-    	itemModel.clear();
+    	itemModel.setRowCount(0);
     	
     	Trip selectedTrip = tripList.getSelectedValue();
     	
     	if(selectedTrip != null) {
     		for (PackingItem packingItem : selectedTrip.getPackingItems()) {
-    			itemModel.addElement(packingItem);
+    			itemModel.addRow(new Object[] {
+    					packingItem.getPacked(),
+    					packingItem.getName(),
+    					packingItem.getCategory(),
+    					packingItem.getQuantity()
+    			});
     		}
+    		
+    		
     	}
     }
 }
