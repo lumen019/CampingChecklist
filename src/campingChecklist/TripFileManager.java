@@ -6,6 +6,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -18,13 +19,22 @@ import java.util.Objects;
 /**
  * Saves and loads trips using a versioned binary file format.
  *
- * <p>Each trip record includes its name, location, optional date,
- * and packing items. Each item includes its name, category,
- * quantity, and packed status.</p>
+ * <p>Each trip record includes its name, destination, optional start and
+ * end dates, packing items, and note sections. Each item includes its
+ * name, category, quantity, and packed status. Each note section
+ * includes its title and content.</p>
+ *
+ * <p>Files written by the previous version (one optional date and
+ * no notes) can still be loaded; their date becomes the start date.</p>
+ *
+ * @author Colby Almond
  */
 public class TripFileManager {
 
     private static final String FILE_HEADER =
+            "CAMPING_CHECKLIST_V2";
+
+    private static final String V1_FILE_HEADER =
             "CAMPING_CHECKLIST_V1";
 
     private final String fileName;
@@ -45,7 +55,8 @@ public class TripFileManager {
     }
 
     /**
-     * Writes trips and their items, replacing existing file contents.
+     * Writes trips with their items and notes, replacing existing
+     * file contents.
      *
      * <p>The parent directory must already exist. This method writes
      * directly to the destination file; it does not perform an atomic
@@ -79,7 +90,7 @@ public class TripFileManager {
     }
 
     /**
-     * Loads all trips and their packing items.
+     * Loads all trips with their packing items and notes.
      *
      * @return the restored trips, or an empty list if the file is missing
      * @throws UncheckedIOException if reading fails or the file
@@ -92,7 +103,10 @@ public class TripFileManager {
                 new BufferedInputStream(
                         Files.newInputStream(path)))) {
 
-            if (!FILE_HEADER.equals(input.readUTF())) {
+            String header = input.readUTF();
+            boolean version1 = V1_FILE_HEADER.equals(header);
+
+            if (!version1 && !FILE_HEADER.equals(header)) {
                 throw new IOException(
                         "Unrecognized camping checklist file.");
             }
@@ -101,7 +115,7 @@ public class TripFileManager {
             ArrayList<Trip> trips = new ArrayList<>();
 
             for (int i = 0; i < tripCount; i++) {
-                trips.add(readTrip(input));
+                trips.add(readTrip(input, version1));
             }
 
             if (input.read() != -1) {
@@ -122,21 +136,16 @@ public class TripFileManager {
     }
 
     /**
-     * Writes one trip and all of its packing items.
+     * Writes one trip with all of its packing items and note sections.
      */
     private void writeTrip(
             DataOutputStream output,
             Trip trip) throws IOException {
 
         output.writeUTF(trip.getName());
-        output.writeUTF(trip.getLocation());
-
-        LocalDate date = trip.getDate();
-        output.writeBoolean(date != null);
-
-        if (date != null) {
-            output.writeUTF(date.toString());
-        }
+        output.writeUTF(trip.getDestination());
+        writeDate(output, trip.getStartDate());
+        writeDate(output, trip.getEndDate());
 
         ArrayList<PackingItem> items = trip.getPackingItems();
         output.writeInt(items.size());
@@ -147,44 +156,38 @@ public class TripFileManager {
             output.writeInt(item.getQuantity());
             output.writeBoolean(item.isPacked());
         }
+
+        ArrayList<NoteSection> sections = trip.getNoteSections();
+        output.writeInt(sections.size());
+
+        for (NoteSection section : sections) {
+            output.writeUTF(section.getTitle());
+            writeLongText(output, section.getContent());
+        }
     }
 
     /**
-     * Reads and validates one trip and its packing items.
+     * Reads and validates one trip with its packing items and notes.
      */
     private Trip readTrip(
-            DataInputStream input) throws IOException {
+            DataInputStream input,
+            boolean version1) throws IOException {
 
         String name = input.readUTF();
-        String location = input.readUTF();
-
-        LocalDate date = null;
-
-        if (input.readBoolean()) {
-            try {
-                date = LocalDate.parse(input.readUTF());
-            } catch (DateTimeParseException exception) {
-                throw new IOException(
-                        "Invalid trip date in file.",
-                        exception);
-            }
-        }
+        String destination = input.readUTF();
+        LocalDate startDate = readDate(input);
+        LocalDate endDate = version1 ? null : readDate(input);
 
         int itemCount = readCount(input);
 
         try {
-            Trip trip = new Trip(name, location, date);
+            Trip trip = new Trip(name, destination, startDate, endDate);
 
             for (int i = 0; i < itemCount; i++) {
                 String itemName = input.readUTF();
                 String category = input.readUTF();
                 int quantity = input.readInt();
                 boolean packed = input.readBoolean();
-
-                if (quantity < 1) {
-                    throw new IOException(
-                            "Item quantity must be positive.");
-                }
 
                 PackingItem item = new PackingItem(
                         itemName, category, quantity);
@@ -193,17 +196,83 @@ public class TripFileManager {
                 trip.addPackingItem(item);
             }
 
+            int sectionCount = version1 ? 0 : readCount(input);
+
+            for (int i = 0; i < sectionCount; i++) {
+                String title = input.readUTF();
+                String content = readLongText(input);
+
+                trip.addNoteSection(new NoteSection(title, content));
+            }
+
             return trip;
 
-        } catch (IllegalArgumentException exception) {
+        } catch (IllegalArgumentException | NullPointerException exception) {
             throw new IOException(
-                    "Invalid trip or item data in file.",
+                    "Invalid trip, item, or note data in file.",
                     exception);
         }
     }
 
     /**
-     * Reads a nonnegative trip or item count.
+     * Writes an optional date as a presence flag and ISO text.
+     */
+    private void writeDate(
+            DataOutputStream output,
+            LocalDate date) throws IOException {
+
+        output.writeBoolean(date != null);
+
+        if (date != null) {
+            output.writeUTF(date.toString());
+        }
+    }
+
+    /**
+     * Reads an optional date written by writeDate().
+     */
+    private LocalDate readDate(
+            DataInputStream input) throws IOException {
+
+        if (!input.readBoolean()) {
+            return null;
+        }
+
+        try {
+            return LocalDate.parse(input.readUTF());
+        } catch (DateTimeParseException exception) {
+            throw new IOException(
+                    "Invalid trip date in file.",
+                    exception);
+        }
+    }
+
+    /**
+     * Writes text of any length. writeUTF() is limited to 64 KB,
+     * which long notes could exceed.
+     */
+    private void writeLongText(
+            DataOutputStream output,
+            String text) throws IOException {
+
+        byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+        output.writeInt(bytes.length);
+        output.write(bytes);
+    }
+
+    /**
+     * Reads text written by writeLongText().
+     */
+    private String readLongText(
+            DataInputStream input) throws IOException {
+
+        byte[] bytes = new byte[readCount(input)];
+        input.readFully(bytes);
+        return new String(bytes, StandardCharsets.UTF_8);
+    }
+
+    /**
+     * Reads a nonnegative count or length.
      */
     private int readCount(
             DataInputStream input) throws IOException {

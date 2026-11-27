@@ -23,6 +23,7 @@
 hs_err_pid*
 replay_pid*
 /bin/
+/bin-test/
 
 # Eclipse workspace files
 .metadata/
@@ -33,3 +34,5 @@ replay_pid*
 # Gradle generated files
 .gradle/
 build/
+# IntelliJ build output (Eclipse uses /bin/)
+/out/

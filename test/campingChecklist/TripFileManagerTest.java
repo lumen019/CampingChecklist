@@ -15,7 +15,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
- * Tests file persistence and rejection of invalid saved data.
+ * Tests file persistence, loading older files, and rejection of invalid
+ * saved data.
+ *
+ * @author Colby Almond
  */
 class TripFileManagerTest {
 
@@ -68,7 +71,8 @@ class TripFileManagerTest {
         Trip trip = createTrip(
                 "Zion Weekend",
                 "Zion National Park",
-                LocalDate.of(2026, 11, 20));
+                LocalDate.of(2026, 11, 20),
+                LocalDate.of(2026, 11, 22));
 
         PackingItem tent =
                 new PackingItem("Tent", "Shelter", 1);
@@ -92,9 +96,11 @@ class TripFileManagerTest {
 
         assertEquals("Zion Weekend", loadedTrip.getName());
         assertEquals(
-                "Zion National Park", loadedTrip.getLocation());
+                "Zion National Park", loadedTrip.getDestination());
         assertEquals(
-                LocalDate.of(2026, 11, 20), loadedTrip.getDate());
+                LocalDate.of(2026, 11, 20), loadedTrip.getStartDate());
+        assertEquals(
+                LocalDate.of(2026, 11, 22), loadedTrip.getEndDate());
 
         assertEquals(2, loadedTrip.getPackingItems().size());
 
@@ -117,11 +123,11 @@ class TripFileManagerTest {
 
     @Test
     void multipleTripsKeepTheirOwnItems() {
-        Trip zion = createTrip("Zion Weekend", "Zion", null);
+        Trip zion = createTrip("Zion Weekend", "Zion", null, null);
         zion.addPackingItem(
                 new PackingItem("Tent", "Shelter", 1));
 
-        Trip moab = createTrip("Moab Overnight", "Moab", null);
+        Trip moab = createTrip("Moab Overnight", "Moab", null, null);
         moab.addPackingItem(
                 new PackingItem("Headlamp", "Equipment", 2));
 
@@ -145,19 +151,110 @@ class TripFileManagerTest {
     }
 
     @Test
-    void optionalDateIsPreserved() {
+    void optionalDatesArePreserved() {
         ArrayList<Trip> trips = new ArrayList<>();
-        trips.add(createTrip("Undated Trip", "Moab", null));
+        trips.add(createTrip("Undated Trip", "Moab", null, null));
+        trips.add(createTrip(
+                "Start Only", "Moab", LocalDate.of(2026, 6, 1), null));
 
         fileManager.saveTrips(trips);
+        ArrayList<Trip> restored = fileManager.loadTrips();
 
-        assertNull(fileManager.loadTrips().get(0).getDate());
+        assertNull(restored.get(0).getStartDate());
+        assertNull(restored.get(0).getEndDate());
+        assertEquals(
+                LocalDate.of(2026, 6, 1), restored.get(1).getStartDate());
+        assertNull(restored.get(1).getEndDate());
+    }
+
+    @Test
+    void noteSectionsArePreservedInOrder() {
+        Trip trip = createTrip("Zion Weekend", "Zion", null, null);
+        String longNote = "Trail notes. ".repeat(10_000);
+
+        trip.addNoteSection(new NoteSection("Campsite", "Site 42\nNear the river"));
+        trip.addNoteSection(new NoteSection("Empty", ""));
+        trip.addNoteSection(new NoteSection("Trail Log ⛺", longNote));
+
+        ArrayList<Trip> trips = new ArrayList<>();
+        trips.add(trip);
+        fileManager.saveTrips(trips);
+
+        ArrayList<NoteSection> sections =
+                fileManager.loadTrips().get(0).getNoteSections();
+
+        assertEquals(3, sections.size());
+        assertEquals("Campsite", sections.get(0).getTitle());
+        assertEquals("Site 42\nNear the river", sections.get(0).getContent());
+        assertEquals("", sections.get(1).getContent());
+        assertEquals("Trail Log ⛺", sections.get(2).getTitle());
+        assertEquals(longNote, sections.get(2).getContent());
+    }
+
+    @Test
+    void version1FileLoadsDateAsStartDate() throws Exception {
+        try (DataOutputStream output = openOutput()) {
+            output.writeUTF("CAMPING_CHECKLIST_V1");
+            output.writeInt(1);
+            output.writeUTF("Old Trip");
+            output.writeUTF("Moab");
+            output.writeBoolean(true);
+            output.writeUTF("2026-12-10");
+            output.writeInt(1);
+            output.writeUTF("Tent");
+            output.writeUTF("Shelter");
+            output.writeInt(2);
+            output.writeBoolean(true);
+        }
+
+        Trip trip = fileManager.loadTrips().get(0);
+
+        assertEquals("Old Trip", trip.getName());
+        assertEquals(LocalDate.of(2026, 12, 10), trip.getStartDate());
+        assertNull(trip.getEndDate());
+        assertEquals(2, trip.getPackingItems().get(0).getQuantity());
+        assertTrue(trip.getPackingItems().get(0).isPacked());
+        assertTrue(trip.getNoteSections().isEmpty());
+    }
+
+    @Test
+    void endDateBeforeStartDateThrowsException() throws Exception {
+        try (DataOutputStream output = openOutput()) {
+            writeSingleTripPrefix(output);
+            output.writeBoolean(true);
+            output.writeUTF("2026-06-10");
+            output.writeBoolean(true);
+            output.writeUTF("2026-06-01");
+            output.writeInt(0);
+            output.writeInt(0);
+        }
+
+        assertThrows(
+                UncheckedIOException.class,
+                () -> fileManager.loadTrips());
+    }
+
+    @Test
+    void blankNoteTitleThrowsException() throws Exception {
+        try (DataOutputStream output = openOutput()) {
+            writeSingleTripPrefix(output);
+            output.writeBoolean(false);
+            output.writeBoolean(false);
+            output.writeInt(0);
+            output.writeInt(1);
+            output.writeUTF(" ");
+            output.writeInt(0);
+        }
+
+        assertThrows(
+                UncheckedIOException.class,
+                () -> fileManager.loadTrips());
     }
 
     @Test
     void savingAgainReplacesPreviousContents() {
         ArrayList<Trip> trips = new ArrayList<>();
-        trips.add(createTrip("First Trip", "Zion", null));
+        trips.add(createTrip("First Trip", "Zion", null, null));
 
         fileManager.saveTrips(trips);
         fileManager.saveTrips(new ArrayList<>());
@@ -189,7 +286,7 @@ class TripFileManagerTest {
     @Test
     void negativeTripCountThrowsException() throws Exception {
         try (DataOutputStream output = openOutput()) {
-            output.writeUTF("CAMPING_CHECKLIST_V1");
+            output.writeUTF("CAMPING_CHECKLIST_V2");
             output.writeInt(-1);
         }
 
@@ -202,6 +299,7 @@ class TripFileManagerTest {
     void negativeItemCountThrowsException() throws Exception {
         try (DataOutputStream output = openOutput()) {
             writeSingleTripPrefix(output);
+            output.writeBoolean(false);
             output.writeBoolean(false);
             output.writeInt(-1);
         }
@@ -217,6 +315,8 @@ class TripFileManagerTest {
             writeSingleTripPrefix(output);
             output.writeBoolean(true);
             output.writeUTF("not-a-date");
+            output.writeBoolean(false);
+            output.writeInt(0);
             output.writeInt(0);
         }
 
@@ -230,11 +330,13 @@ class TripFileManagerTest {
         try (DataOutputStream output = openOutput()) {
             writeSingleTripPrefix(output);
             output.writeBoolean(false);
+            output.writeBoolean(false);
             output.writeInt(1);
             output.writeUTF("Tent");
             output.writeUTF("Shelter");
             output.writeInt(0);
             output.writeBoolean(false);
+            output.writeInt(0);
         }
 
         assertThrows(
@@ -245,11 +347,13 @@ class TripFileManagerTest {
     @Test
     void blankTripNameThrowsException() throws Exception {
         try (DataOutputStream output = openOutput()) {
-            output.writeUTF("CAMPING_CHECKLIST_V1");
+            output.writeUTF("CAMPING_CHECKLIST_V2");
             output.writeInt(1);
             output.writeUTF(" ");
             output.writeUTF("Zion");
             output.writeBoolean(false);
+            output.writeBoolean(false);
+            output.writeInt(0);
             output.writeInt(0);
         }
 
@@ -263,11 +367,13 @@ class TripFileManagerTest {
         try (DataOutputStream output = openOutput()) {
             writeSingleTripPrefix(output);
             output.writeBoolean(false);
+            output.writeBoolean(false);
             output.writeInt(1);
             output.writeUTF("Tent");
             output.writeUTF(" ");
             output.writeInt(1);
             output.writeBoolean(false);
+            output.writeInt(0);
         }
 
         assertThrows(
@@ -292,7 +398,7 @@ class TripFileManagerTest {
     @Test
     void truncatedFileThrowsException() throws Exception {
         ArrayList<Trip> trips = new ArrayList<>();
-        trips.add(createTrip("Zion Weekend", "Zion", null));
+        trips.add(createTrip("Zion Weekend", "Zion", null, null));
         fileManager.saveTrips(trips);
 
         byte[] bytes = Files.readAllBytes(file);
@@ -322,9 +428,10 @@ class TripFileManagerTest {
     private Trip createTrip(
             String name,
             String destination,
-            LocalDate date) {
+            LocalDate startDate,
+            LocalDate endDate) {
 
-        return new Trip(name, destination, date);
+        return new Trip(name, destination, startDate, endDate);
     }
 
     private DataOutputStream openOutput() throws Exception {
@@ -332,13 +439,13 @@ class TripFileManagerTest {
     }
 
     /**
-     * Writes the header, trip count, name, and location.
+     * Writes the header, trip count, name, and destination.
      * Each test writes the remaining fields needed for its scenario.
      */
     private void writeSingleTripPrefix(
             DataOutputStream output) throws Exception {
 
-        output.writeUTF("CAMPING_CHECKLIST_V1");
+        output.writeUTF("CAMPING_CHECKLIST_V2");
         output.writeInt(1);
         output.writeUTF("Zion Weekend");
         output.writeUTF("Zion");
