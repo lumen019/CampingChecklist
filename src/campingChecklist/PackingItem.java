@@ -6,6 +6,7 @@ import java.util.Objects;
  * A item added to the checklist.
  * 
  * @author Jared Saltou
+ * @author Colby Almond (co-author)
  */
 public class PackingItem{
 	private String name;
@@ -14,35 +15,18 @@ public class PackingItem{
 	private boolean packed;
 	
 	/**
-	 * Constructs a new item that has a name, a category, the amount being packed, and if the item is already packed.
+	 * Constructs a new unpacked item that has a name, a category, and the amount being packed.
 	 * 
 	 * @param name			Name of the item i.e Pants, Shirt, Flashlight
 	 * @param category		Category it falls under i.e Tent, Clothing, Hygiene
 	 * @param quantity		Amount of the items.
-	 * @param packed		is the item packed(checked off)
+	 * @throws NullPointerException if name or category is null
+	 * @throws IllegalArgumentException if name or category is blank or quantity is not positive
 	 */
 	public PackingItem(String name, String category, int quantity) {
-		super();
-		Objects.requireNonNullElse(name, "").isBlank();
-		
-		/*
-		 * Invalid input detection
-		 */
-		if (quantity <= 0) {
-			throw new IllegalArgumentException("Value must be positive!");
-		}
-		if (category.equals(null) || name.equals(null)) {
-			throw new NullPointerException("Category and Name must have a name!");
-		}
-		if (category.isBlank() || name.isBlank()) {
-			throw new IllegalArgumentException("Category and Name must have a name!");
-		} 
-		
-		category = Character.toUpperCase(category.charAt(0)) + category.substring(1).toLowerCase();
-				
-		this.name = name;
-		this.category = category;
-		this.quantity = quantity;
+		setName(name);
+		setCategory(category);
+		setQuantity(quantity);
 	}
 	
 	/**
@@ -55,12 +39,43 @@ public class PackingItem{
 	}
 	
 	/**
+	 * Sets the name of the item. Surrounding whitespace is removed.
+	 * 
+	 * @param name the new name
+	 * @throws NullPointerException if name is null
+	 * @throws IllegalArgumentException if name is blank
+	 */
+	public void setName(String name) {
+		Objects.requireNonNull(name, "Name must have a name!");
+		if (name.isBlank()) {
+			throw new IllegalArgumentException("Name must have a name!");
+		}
+		this.name = name.trim();
+	}
+	
+	/**
 	 * Returns the category of the item.
 	 * 
 	 * @return the category
 	 */
 	public String getCategory() {
 		return category;
+	}
+	
+	/**
+	 * Sets the category of the item, capitalized like "Clothing".
+	 * 
+	 * @param category the new category
+	 * @throws NullPointerException if category is null
+	 * @throws IllegalArgumentException if category is blank
+	 */
+	public void setCategory(String category) {
+		Objects.requireNonNull(category, "Category must have a name!");
+		if (category.isBlank()) {
+			throw new IllegalArgumentException("Category must have a name!");
+		}
+		category = category.trim();
+		this.category = Character.toUpperCase(category.charAt(0)) + category.substring(1).toLowerCase();
 	}
 	
 	/**
@@ -73,9 +88,22 @@ public class PackingItem{
 	}
 	
 	/**
-	 * Sets the boolean packed to true or false.
+	 * Sets the quantity of the item.
 	 * 
-	 * @param packed the packed to set
+	 * @param quantity the new quantity, at least 1
+	 * @throws IllegalArgumentException if quantity is not positive
+	 */
+	public void setQuantity(int quantity) {
+		if (quantity <= 0) {
+			throw new IllegalArgumentException("Value must be positive!");
+		}
+		this.quantity = quantity;
+	}
+	
+	/**
+	 * Sets whether the item is packed (checked off).
+	 * 
+	 * @param packed true if the item is packed
 	 */
 	public void setPacked(boolean packed) {
 		this.packed = packed;
@@ -86,7 +114,7 @@ public class PackingItem{
 	 * 
 	 * @return the packed condition
 	 */
-	public boolean getPacked() {
+	public boolean isPacked() {
 		return packed;
 	}
 
@@ -94,6 +122,4 @@ public class PackingItem{
 	public String toString() {
 		return name + " (" + category + ") x" + quantity;
 	}
-	
-	
 }

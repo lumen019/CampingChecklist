@@ -14,6 +14,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 /**
  * Tests trip management, item management, and planner persistence.
+ *
+ * @author Colby Almond
  */
 class TripPlannerTest {
 
@@ -113,14 +115,23 @@ class TripPlannerTest {
     @Test
     void editTripUpdatesDetails() {
         Trip trip = addManagedTrip();
-        LocalDate newDate = LocalDate.of(2026, 11, 27);
+        PackingItem tent = createItem();
+        NoteSection notes = new NoteSection("Campsite", "Site 42");
+        planner.addPackingItem(trip, tent);
+        planner.addNoteSection(trip, notes);
+
+        LocalDate newStart = LocalDate.of(2026, 12, 4);
+        LocalDate newEnd = LocalDate.of(2026, 12, 6);
 
         planner.editTrip(
-                trip, "Moab Overnight", "Moab", newDate);
+                trip, "Moab Overnight", "Moab", newStart, newEnd);
 
         assertEquals("Moab Overnight", trip.getName());
-        assertEquals("Moab", trip.getLocation());
-        assertEquals(newDate, trip.getDate());
+        assertEquals("Moab", trip.getDestination());
+        assertEquals(newStart, trip.getStartDate());
+        assertEquals(newEnd, trip.getEndDate());
+        assertSame(tent, trip.getPackingItems().get(0));
+        assertSame(notes, trip.getNoteSections().get(0));
     }
 
     @Test
@@ -134,29 +145,37 @@ class TripPlannerTest {
                 () -> assertThrows(
                         IllegalArgumentException.class,
                         () -> planner.editTrip(
-                                trip, "Updated", "Moab", null))
+                                trip, "Updated", "Moab", null, null))
         );
     }
 
     @Test
     void editTripRejectsInvalidValuesWithoutChangingTrip() {
         Trip trip = addManagedTrip();
-        LocalDate originalDate = trip.getDate();
+        LocalDate originalStart = trip.getStartDate();
+        LocalDate originalEnd = trip.getEndDate();
 
         assertAll(
                 () -> assertThrows(
                         IllegalArgumentException.class,
                         () -> planner.editTrip(
-                                trip, " ", "Moab", null)),
+                                trip, " ", "Moab", null, null)),
                 () -> assertThrows(
                         IllegalArgumentException.class,
                         () -> planner.editTrip(
-                                trip, "Updated", " ", null))
+                                trip, "Updated", " ", null, null)),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> planner.editTrip(
+                                trip, "Updated", "Moab",
+                                LocalDate.of(2026, 12, 6),
+                                LocalDate.of(2026, 12, 4)))
         );
 
         assertEquals("Zion Weekend", trip.getName());
-        assertEquals("Zion", trip.getLocation());
-        assertEquals(originalDate, trip.getDate());
+        assertEquals("Zion", trip.getDestination());
+        assertEquals(originalStart, trip.getStartDate());
+        assertEquals(originalEnd, trip.getEndDate());
     }
 
     @Test
@@ -408,9 +427,10 @@ class TripPlannerTest {
 
         planner.setItemPacked(trip, tent, true);
 
+        // Tent x1 packed, water x3 unpacked: 1 of 4 items.
         assertTrue(tent.isPacked());
         assertEquals(
-                50.0, planner.calculateProgress(trip), 0.0001);
+                25.0, planner.calculateProgress(trip), 0.0001);
 
         planner.setItemPacked(trip, tent, false);
 
@@ -430,7 +450,7 @@ class TripPlannerTest {
                 new PackingItem("Sleeping bag", "Bedding", 2));
 
         assertEquals(
-                trip.getPackingProgress(),
+                trip.calculateProgress(),
                 planner.calculateProgress(trip),
                 0.0001);
     }
@@ -518,6 +538,177 @@ class TripPlannerTest {
         assertSame(trip, planner.getTrips().get(0));
     }
 
+    @Test
+    void noteSectionsCanBeAddedEditedAndRemoved() {
+        Trip trip = addManagedTrip();
+        NoteSection campsite = new NoteSection("Campsite", "");
+        NoteSection meals = new NoteSection("Meals", "Tacos");
+
+        planner.addNoteSection(trip, campsite);
+        planner.addNoteSection(trip, meals);
+        planner.editNoteSection(
+                trip, campsite, "  Campsite 42  ", "Near the river");
+
+        assertEquals("Campsite 42", campsite.getTitle());
+        assertEquals("Near the river", campsite.getContent());
+
+        planner.removeNoteSection(trip, meals);
+
+        assertEquals(1, trip.getNoteSections().size());
+        assertSame(campsite, trip.getNoteSections().get(0));
+    }
+
+    @Test
+    void addNoteSectionRejectsDuplicateObject() {
+        Trip trip = addManagedTrip();
+        NoteSection section = new NoteSection("Campsite", "");
+        planner.addNoteSection(trip, section);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> planner.addNoteSection(trip, section));
+
+        assertEquals(1, trip.getNoteSections().size());
+    }
+
+    @Test
+    void editNoteSectionRejectsBlankTitleWithoutChangingSection() {
+        Trip trip = addManagedTrip();
+        NoteSection section = new NoteSection("Campsite", "Site 42");
+        planner.addNoteSection(trip, section);
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> planner.editNoteSection(trip, section, " ", "New"));
+
+        assertEquals("Campsite", section.getTitle());
+        assertEquals("Site 42", section.getContent());
+    }
+
+    @Test
+    void noteChangesRejectSectionFromAnotherTripOrUnmanagedTrip() {
+        Trip zion = addManagedTrip();
+        Trip moab = createTrip("Moab Overnight", "Moab");
+        planner.addTrip(moab);
+        Trip unmanaged = createTrip("Other Trip", "Other");
+
+        NoteSection section = new NoteSection("Campsite", "Site 42");
+        planner.addNoteSection(zion, section);
+
+        assertAll(
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> planner.editNoteSection(
+                                moab, section, "Moved", "")),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> planner.removeNoteSection(moab, section)),
+                () -> assertThrows(
+                        IllegalArgumentException.class,
+                        () -> planner.addNoteSection(
+                                unmanaged, new NoteSection("New", "")))
+        );
+
+        assertEquals(1, zion.getNoteSections().size());
+        assertEquals("Campsite", section.getTitle());
+    }
+
+    @Test
+    void saveAndLoadPreservesDatesAndNotes() {
+        Trip trip = addManagedTrip();
+        planner.addNoteSection(
+                trip, new NoteSection("Campsite", "Site 42"));
+        planner.saveTrips();
+
+        TripPlanner restored = new TripPlanner(file.toString());
+        restored.loadTrips();
+
+        Trip loadedTrip = restored.getTrips().get(0);
+
+        assertEquals(LocalDate.of(2026, 11, 20), loadedTrip.getStartDate());
+        assertEquals(LocalDate.of(2026, 11, 22), loadedTrip.getEndDate());
+        assertEquals(
+                "Site 42",
+                loadedTrip.getNoteSections().get(0).getContent());
+    }
+
+    @Test
+    void newPlannerHasNoUnsavedChanges() {
+        assertFalse(planner.hasUnsavedChanges());
+    }
+
+    @Test
+    void everyKindOfEditMarksUnsavedAndSaveClearsIt() {
+        Trip trip = addManagedTrip();
+        PackingItem item = createItem();
+        NoteSection section = new NoteSection("Campsite", "");
+
+        Runnable[] edits = {
+                () -> planner.editTrip(trip, "New", "Moab", null, null),
+                () -> planner.editTrip(trip),
+                () -> planner.addPackingItem(trip, item),
+                () -> planner.editPackingItem(trip, item, "Tarp", "Gear", 2),
+                () -> planner.setItemPacked(trip, item, true),
+                () -> planner.removePackingItem(trip, item),
+                () -> planner.addNoteSection(trip, section),
+                () -> planner.editNoteSection(trip, section, "Site", "42"),
+                () -> planner.removeNoteSection(trip, section),
+                () -> planner.removeTrip(trip)
+        };
+
+        for (int i = 0; i < edits.length; i++) {
+            planner.saveTrips();
+            assertFalse(planner.hasUnsavedChanges());
+
+            edits[i].run();
+
+            assertTrue(planner.hasUnsavedChanges(), "edit #" + i);
+        }
+    }
+
+    @Test
+    void rejectedOrNoOpEditsDoNotMarkUnsaved() {
+        Trip trip = addManagedTrip();
+        planner.saveTrips();
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> planner.editTrip(trip, " ", "Moab", null, null));
+        planner.deleteTrip(createTrip("Other Trip", "Other"));
+
+        assertFalse(planner.hasUnsavedChanges());
+    }
+
+    @Test
+    void loadClearsUnsavedChangesButFailedLoadKeepsThem() throws Exception {
+        addManagedTrip();
+        planner.saveTrips();
+        planner.addTrip(createTrip("Moab Overnight", "Moab"));
+
+        planner.loadTrips();
+        assertFalse(planner.hasUnsavedChanges());
+
+        planner.addTrip(createTrip("Moab Overnight", "Moab"));
+        Files.write(file, new byte[] {1, 2, 3});
+
+        assertThrows(
+                UncheckedIOException.class,
+                () -> planner.loadTrips());
+        assertTrue(planner.hasUnsavedChanges());
+    }
+
+    @Test
+    void failedSaveKeepsUnsavedChanges() {
+        TripPlanner badPlanner = new TripPlanner(
+                tempDirectory.resolve("missing").resolve("trips.dat").toString());
+        badPlanner.addTrip(createTrip("Zion Weekend", "Zion"));
+
+        assertThrows(
+                UncheckedIOException.class,
+                () -> badPlanner.saveTrips());
+        assertTrue(badPlanner.hasUnsavedChanges());
+    }
+
     private Trip addManagedTrip() {
         Trip trip = createTrip("Zion Weekend", "Zion");
         planner.addTrip(trip);
@@ -528,7 +719,8 @@ class TripPlannerTest {
         return new Trip(
                 name,
                 destination,
-                LocalDate.of(2026, 11, 20));
+                LocalDate.of(2026, 11, 20),
+                LocalDate.of(2026, 11, 22));
     }
 
     private PackingItem createItem() {

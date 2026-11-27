@@ -5,14 +5,19 @@ import java.util.ArrayList;
 import java.util.Objects;
 
 /**
- * Manages camping trips and their packing items and coordinates file storage.
+ * Manages camping trips, their packing items and note sections,
+ * and coordinates file storage.
  *
- * <p>Changes remain in memory until saveTrips() is called.</p>
+ * <p>Changes remain in memory until saveTrips() is called;
+ * hasUnsavedChanges() reports whether any are pending.</p>
+ *
+ * @author Colby Almond
  */
 public class TripPlanner {
 
     private ArrayList<Trip> trips;
     private final TripFileManager fileManager;
+    private boolean unsavedChanges;
 
     /**
      * Creates an empty planner using trips.dat for storage.
@@ -60,13 +65,15 @@ public class TripPlanner {
         }
 
         trips.add(trip);
+        unsavedChanges = true;
     }
 
     /**
      * Verifies that a trip belongs to this planner.
      *
      * <p>This overload does not change trip details. Callers may update
-     * the managed trip through its setters.</p>
+     * the managed trip through its setters, then call this method so the
+     * change counts as unsaved.</p>
      *
      * @param trip the trip to verify
      * @throws NullPointerException if trip is null
@@ -74,32 +81,39 @@ public class TripPlanner {
      */
     public void editTrip(Trip trip) {
         requireManagedTrip(trip);
+        unsavedChanges = true;
     }
 
     /**
      * Updates a managed trip after validating all new values.
      *
+     * <p>Packing items and note sections are preserved.</p>
+     *
      * @param trip the managed trip to edit
      * @param name the new nonblank name
-     * @param location the new nonblank location
-     * @param date the new date, or null for an undated trip
-     * @throws NullPointerException if trip is null
-     * @throws IllegalArgumentException if the trip is not managed
-     *         or the new name or location is invalid
+     * @param destination the new nonblank destination
+     * @param startDate the new start date, or null
+     * @param endDate the new end date, or null
+     * @throws NullPointerException if trip, name, or destination is null
+     * @throws IllegalArgumentException if the trip is not managed,
+     *         the new name or destination is blank, or endDate is
+     *         before startDate
      */
     public void editTrip(
             Trip trip,
             String name,
-            String location,
-            LocalDate date) {
+            String destination,
+            LocalDate startDate,
+            LocalDate endDate) {
 
         requireManagedTrip(trip);
 
-        Trip validated = new Trip(name, location, date);
+        Trip validated = new Trip(name, destination, startDate, endDate);
 
         trip.setName(validated.getName());
-        trip.setLocation(validated.getLocation());
-        trip.setDate(validated.getDate());
+        trip.setDestination(validated.getDestination());
+        trip.setDates(validated.getStartDate(), validated.getEndDate());
+        unsavedChanges = true;
     }
 
     /**
@@ -112,7 +126,9 @@ public class TripPlanner {
      */
     public void deleteTrip(Trip trip) {
         Objects.requireNonNull(trip, "Trip cannot be null.");
-        trips.remove(trip);
+        if (trips.remove(trip)) {
+            unsavedChanges = true;
+        }
     }
 
     /**
@@ -147,6 +163,7 @@ public class TripPlanner {
         }
 
         trip.addPackingItem(item);
+        unsavedChanges = true;
     }
 
     /**
@@ -161,6 +178,7 @@ public class TripPlanner {
     public void removePackingItem(Trip trip, PackingItem item) {
         requireManagedItem(trip, item);
         trip.removePackingItem(item);
+        unsavedChanges = true;
     }
 
     /**
@@ -173,7 +191,7 @@ public class TripPlanner {
      * @param name the new nonblank name
      * @param category the new nonblank category
      * @param quantity the new quantity, at least 1
-     * @throws NullPointerException if trip or item is null
+     * @throws NullPointerException if trip, item, name, or category is null
      * @throws IllegalArgumentException if membership validation fails
      *         or any new item value is invalid
      */
@@ -192,6 +210,7 @@ public class TripPlanner {
         item.setName(validated.getName());
         item.setCategory(validated.getCategory());
         item.setQuantity(validated.getQuantity());
+        unsavedChanges = true;
     }
 
     /**
@@ -211,10 +230,12 @@ public class TripPlanner {
 
         requireManagedItem(trip, item);
         item.setPacked(packed);
+        unsavedChanges = true;
     }
 
     /**
-     * Returns the percentage of item entries marked packed.
+     * Returns the percentage of the trip's total item quantity
+     * that is packed.
      *
      * @param trip the managed trip to inspect
      * @return packing progress from 0.0 to 100.0
@@ -223,16 +244,80 @@ public class TripPlanner {
      */
     public double calculateProgress(Trip trip) {
         requireManagedTrip(trip);
-        return trip.getPackingProgress();
+        return trip.calculateProgress();
     }
 
     /**
-     * Saves all current trips and their items.
+     * Adds a note section to a managed trip.
+     *
+     * @param trip the managed trip receiving the section
+     * @param section the section to add
+     * @throws NullPointerException if trip or section is null
+     * @throws IllegalArgumentException if the trip is not managed
+     *         or the section already belongs to the trip
+     */
+    public void addNoteSection(Trip trip, NoteSection section) {
+        requireManagedTrip(trip);
+        Objects.requireNonNull(section, "Note section cannot be null.");
+
+        if (trip.getNoteSections().contains(section)) {
+            throw new IllegalArgumentException(
+                    "This note section already belongs to the trip.");
+        }
+
+        trip.addNoteSection(section);
+        unsavedChanges = true;
+    }
+
+    /**
+     * Updates a note section after validating the new values.
+     *
+     * @param trip the managed trip containing the section
+     * @param section the section to edit
+     * @param title the new nonblank title
+     * @param content the new text, which may be empty
+     * @throws NullPointerException if any argument is null
+     * @throws IllegalArgumentException if membership validation fails
+     *         or the title is blank
+     */
+    public void editNoteSection(
+            Trip trip,
+            NoteSection section,
+            String title,
+            String content) {
+
+        requireManagedSection(trip, section);
+
+        NoteSection validated = new NoteSection(title, content);
+
+        section.setTitle(validated.getTitle());
+        section.setContent(validated.getContent());
+        unsavedChanges = true;
+    }
+
+    /**
+     * Removes a note section from a managed trip.
+     *
+     * @param trip the managed trip containing the section
+     * @param section the section to remove
+     * @throws NullPointerException if trip or section is null
+     * @throws IllegalArgumentException if the trip is not managed
+     *         or the section does not belong to the trip
+     */
+    public void removeNoteSection(Trip trip, NoteSection section) {
+        requireManagedSection(trip, section);
+        trip.removeNoteSection(section);
+        unsavedChanges = true;
+    }
+
+    /**
+     * Saves all current trips with their items and notes.
      *
      * @throws java.io.UncheckedIOException if saving fails
      */
     public void saveTrips() {
         fileManager.saveTrips(trips);
+        unsavedChanges = false;
     }
 
     /**
@@ -244,8 +329,19 @@ public class TripPlanner {
      * @throws java.io.UncheckedIOException if loading fails
      */
     public void loadTrips() {
-        ArrayList<Trip> loadedTrips = fileManager.loadTrips();
-        trips = loadedTrips;
+        trips = fileManager.loadTrips();
+        unsavedChanges = false;
+    }
+
+    /**
+     * Returns whether trips changed since they were last saved or loaded.
+     *
+     * <p>Only changes made through this planner's methods are tracked.</p>
+     *
+     * @return true if there are unsaved changes
+     */
+    public boolean hasUnsavedChanges() {
+        return unsavedChanges;
     }
 
     /**
@@ -270,6 +366,19 @@ public class TripPlanner {
         if (!trip.getPackingItems().contains(item)) {
             throw new IllegalArgumentException(
                     "Packing item does not belong to this trip.");
+        }
+    }
+
+    /**
+     * Verifies that a note section belongs to the selected managed trip.
+     */
+    private void requireManagedSection(Trip trip, NoteSection section) {
+        requireManagedTrip(trip);
+        Objects.requireNonNull(section, "Note section cannot be null.");
+
+        if (!trip.getNoteSections().contains(section)) {
+            throw new IllegalArgumentException(
+                    "Note section does not belong to this trip.");
         }
     }
 }
