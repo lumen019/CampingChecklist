@@ -58,8 +58,8 @@ The app can also show a map image inside the app using a Google Maps Static API
 key set in the `GOOGLE_MAPS_API_KEY` environment variable. The team has not set
 up a key yet; setup instructions will be added if we do.
 
-  - **macOS:** `export GOOGLE_MAPS_API_KEY=your-key` in a terminal only affects programs started from that terminal.
-  - **Windows PowerShell:** `setx GOOGLE_MAPS_API_KEY "your-key"`, then restart the IDE.
+  - **macOS:** `export GOOGLE_MAPS_API_KEY=google-maps-api-key-value` in a terminal only affects programs started from that terminal.
+  - **Windows PowerShell:** `setx GOOGLE_MAPS_API_KEY "google-maps-api-key-value"`, then restart the IDE.
 
 ## Team
 
